@@ -24,19 +24,6 @@ configurations {
     }
 }
 
-repositories {
-    maven {url "https://jitpack.io/"}
-    maven { url = "https://mvn.devos.one/snapshots/" } // Create Fabric, Porting Lib, Forge Tags, Milk Lib, Registrate Fabric
-    maven { url = "https://cursemaven.com" } // Forge Config API Port
-    maven { url = "https://maven.jamieswhiteshirt.com/libs-release" } // Reach Entity Attributes
-    maven { url = "https://jitpack.io/" } // Mixin Extras, Fabric ASM
-    maven { // forge config api port
-        name = "Fuzs Mod Resources"
-        url = "https://raw.githubusercontent.com/Fuzss/modresources/main/maven/"
-        allowInsecureProtocol = true
-    }
-}
-
 dependencies {
     modImplementation "net.fabricmc:fabric-loader:$rootProject.fabric_loader_version"
 
@@ -46,16 +33,7 @@ dependencies {
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
     shadowBundle project(path: ':common', configuration: 'transformProductionFabric')
 
-    modCompileOnly ("com.jozufozu.flywheel:flywheel-fabric-${flywheel_minecraft_version}:${flywheel_fabric_version}")
-    modCompileOnly files("libs/Iris-1.8.0.jar")
-
-    localRuntime ("org.joml:joml:1.10.4")
-    localRuntime ('org.anarres:jcpp:1.4.14')
-    localRuntime ('io.github.douira:glsl-transformer:2.0.0-pre14')
-    modLocalRuntime files("libs/Iris-1.8.0.jar")
-    modLocalRuntime files("libs/Sodium-0.6.0.jar")
-    modLocalRuntime "com.jozufozu.flywheel:flywheel-fabric-${flywheel_minecraft_version}:${flywheel_fabric_version}"
-    modLocalRuntime ("com.simibubi.create:create-fabric-${minecraft_version}:${create_fabric_version}")
+    modCompileOnly "com.jozufozu.flywheel:flywheel-fabric-${flywheel_minecraft_version}:${flywheel_fabric_version}"
 }
 
 processResources {

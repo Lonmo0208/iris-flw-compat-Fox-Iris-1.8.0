@@ -8,6 +8,8 @@ import com.jozufozu.flywheel.core.source.FileResolution;
 import com.jozufozu.flywheel.core.source.SourceFile;
 import com.jozufozu.flywheel.core.source.parse.StructField;
 
+import java.util.Objects;
+
 public abstract class ShaderPatcherBase {
     protected final FileResolution header;
     protected final Template<? extends VertexData> template;
@@ -17,7 +19,7 @@ public abstract class ShaderPatcherBase {
         this.template = template;
     }
 
-    public abstract String patch(String irisSource, Context key);
+    public abstract String patch(String irisSource, TemplateShaderPatcher.Context key);
 
     public void generateCreateVertex(VertexData template, StringBuilder createVertexBuilder) {
         if (template instanceof InstancingTemplateData instancingTemplate) {
@@ -80,36 +82,44 @@ public abstract class ShaderPatcherBase {
                                      
                                      Vertex v; //define outside of main() so all function can use it.
                                      vec4 _flw_patched_vertex_pos;
+                                     vec4 _flw_tangent;
                                      """);
         headerBuilder.append(key.vertexType.getShaderHeader());
     }
 
-    /**
-     * @param file       The file to compile.
-     * @param ctx        The shader constants to apply.
-     * @param vertexType The vertex type to use.
-     */
-    public record Context(SourceFile file, StateSnapshot ctx, VertexType vertexType) {
+    public static class Context {
+        /**
+         * The file to compile.
+         */
+        public final SourceFile file;
 
-        public SourceFile getFile() {
-            return file;
-        }
+        /**
+         * The shader constants to apply.
+         */
+        public final StateSnapshot ctx;
 
-        public StateSnapshot getCtx() {
-            return ctx;
-        }
+        /**
+         * The vertex type to use.
+         */
+        public final VertexType vertexType;
 
-        public VertexType getVertexType() {
-            return vertexType;
+        public Context(SourceFile file, StateSnapshot ctx, VertexType vertexType) {
+            this.file = file;
+            this.ctx = ctx;
+            this.vertexType = vertexType;
         }
 
         @Override
-            public boolean equals(Object o) {
-                if (this == o) return true;
-                if (o == null || getClass() != o.getClass()) return false;
-                var that = (Context) o;
-                return file == that.file && vertexType == that.vertexType && ctx.equals(that.ctx);
-            }
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            var that = (Context) o;
+            return file == that.file && vertexType == that.vertexType && ctx.equals(that.ctx);
+        }
 
+        @Override
+        public int hashCode() {
+            return Objects.hash(file, ctx, vertexType);
+        }
     }
 }

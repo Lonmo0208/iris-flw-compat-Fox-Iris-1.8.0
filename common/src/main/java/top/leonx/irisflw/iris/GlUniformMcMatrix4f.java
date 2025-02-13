@@ -22,7 +22,6 @@ public class GlUniformMcMatrix4f extends GlUniform<Matrix4f>{
             GL30C.glUniformMatrix4fv(this.index, false, buf);
         }
     }
-
     public void set(Matrix4fc value) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buf = stack.callocFloat(16);

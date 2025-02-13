@@ -6,16 +6,17 @@ import com.jozufozu.flywheel.core.compile.Template;
 import com.jozufozu.flywheel.core.compile.VertexData;
 import com.jozufozu.flywheel.core.shader.WorldProgram;
 import com.jozufozu.flywheel.core.source.FileResolution;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
-import net.irisshaders.iris.gl.state.FogMode;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
-import net.irisshaders.iris.shaderpack.loading.ProgramId;
+import net.irisshaders.iris.gl.state.FogMode;
 import net.irisshaders.iris.shaderpack.programs.ProgramSet;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 import net.irisshaders.iris.shaderpack.properties.ShaderProperties;
-import net.irisshaders.iris.vertices.IrisVertexFormats;
+import net.irisshaders.iris.shaderpack.loading.ProgramId;
+import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.network.chat.Component;
@@ -38,13 +39,13 @@ public abstract class IrisProgramCompilerBase<P extends WorldProgram> {
     protected final GlProgram.Factory<P> factory;
     private static int programCounter = 0;
 
-    public IrisProgramCompilerBase(GlProgram.Factory<P> factory, Template<? extends VertexData> ignoredTemplate, FileResolution ignoredHeader) {
+    public IrisProgramCompilerBase(GlProgram.Factory<P> factory, Template<? extends VertexData> template, FileResolution header) {
         this.factory = factory;
     }
 
-    public P getProgram(ProgramContext ctx, boolean isShadow) {
+    public P getProgram(ProgramContext ctx,boolean isShadow) {
 
-        if (IrisFlw.isShaderPackInUse()) {
+        if (IrisApi.getInstance().isShaderPackInUse()) {
             WorldRenderingPipeline pipeline = Iris.getPipelineManager().getPipelineNullable();
             HashMap<ProgramContext, P> cache;
             if (isShadow) {
@@ -90,11 +91,11 @@ public abstract class IrisProgramCompilerBase<P extends WorldProgram> {
             if (isShadow) {
                 override = pipeline.callCreateShadowShader(
                         getFlwShaderName(ctx.spec.name, true), processedSource, ProgramId.Block, AlphaTest.ALWAYS,
-                        IrisVertexFormats.TERRAIN, false, false, false, false);
+                        DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR, false, false, false, false);
             } else {
                 override = pipeline.callCreateShader(
                         getFlwShaderName(ctx.spec.name, false), processedSource, ProgramId.Block, AlphaTest.ALWAYS,
-                        IrisVertexFormats.TERRAIN, FogMode.OFF, false, false, false, false, false);
+                        DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR, FogMode.OFF, false, false, false, false, false);
             }
 
         } catch (Exception exception) {
@@ -114,12 +115,13 @@ public abstract class IrisProgramCompilerBase<P extends WorldProgram> {
         ShaderProperties properties = ((ProgramSourceAccessor) source).getShaderProperties();
         BlendModeOverride blendModeOverride = ((ProgramSourceAccessor) source).getBlendModeOverride();
         //Get a copy of program
-        return new ProgramSource(source.getName() + "_" + ctx.spec.name.getNamespace() + "_" +
+        ProgramSource processedSource = new ProgramSource(source.getName() + "_" + ctx.spec.name.getNamespace() + "_" +
                 ctx.spec.name.getPath(), vertexSource,
                 source.getGeometrySource().orElse(null),
-                source.getTessControlSource().orElse(null),
-                source.getTessEvalSource().orElse(null),
+		source.getTessControlSource().orElse(null),
+		source.getTessEvalSource().orElse(null),
                 source.getFragmentSource().orElse(null), programSet, properties, blendModeOverride);
+        return processedSource;
     }
 
     public void clear() {
