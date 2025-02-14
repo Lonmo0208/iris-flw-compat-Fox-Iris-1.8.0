@@ -8,20 +8,12 @@ import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 
-public class GlUniformMcMatrix4f extends GlUniform<Matrix4f>{
+public class GlUniformMcMatrix4f extends GlUniform<Matrix4fc>{
     public GlUniformMcMatrix4f(int index) {
         super(index);
     }
 
 
-    public void set(Matrix4f value) {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            FloatBuffer buf = stack.callocFloat(16);
-            value.get(buf);
-
-            GL30C.glUniformMatrix4fv(this.index, false, buf);
-        }
-    }
     public void set(Matrix4fc value) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buf = stack.callocFloat(16);
