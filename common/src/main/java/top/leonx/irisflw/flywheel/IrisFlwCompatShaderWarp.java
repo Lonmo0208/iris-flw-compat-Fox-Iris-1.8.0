@@ -97,11 +97,11 @@ public class IrisFlwCompatShaderWarp {
     public void setModelViewMatrix(Matrix4fc modelView) {
         iris_uniformModelViewMat.set(modelView);
 
-        if (this.uniformNormalMatrix != null) {
+        if (uniformNormalMatrix != null) {
             Matrix4f normalMatrix = new Matrix4f(modelView);
             normalMatrix.invert();
             normalMatrix.transpose();
-            this.uniformNormalMatrix.set(new Matrix3f(normalMatrix));
+            uniformNormalMatrix.set(new Matrix3f(normalMatrix));
         }
     }
 }
