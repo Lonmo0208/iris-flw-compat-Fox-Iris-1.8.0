@@ -1,11 +1,11 @@
 package top.leonx.irisflw.compiler;
 
-import com.jozufozu.flywheel.backend.gl.shader.GlProgram;
-import com.jozufozu.flywheel.core.compile.ProgramContext;
-import com.jozufozu.flywheel.core.compile.Template;
-import com.jozufozu.flywheel.core.compile.VertexData;
-import com.jozufozu.flywheel.core.shader.WorldProgram;
-import com.jozufozu.flywheel.core.source.FileResolution;
+import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
+import dev.engine_room.flywheel.core.compile.ProgramContext;
+import dev.engine_room.flywheel.core.compile.Template;
+import dev.engine_room.flywheel.core.compile.VertexData;
+import dev.engine_room.flywheel.core.shader.WorldProgram;
+import dev.engine_room.flywheel.core.source.FileResolution;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;

@@ -1,7 +1,7 @@
 package top.leonx.irisflw.vertex;
 
-import com.jozufozu.flywheel.core.vertex.AbstractVertexList;
-import com.jozufozu.flywheel.util.RenderMath;
+import dev.engine_room.flywheel.core.vertex.AbstractVertexList;
+import dev.engine_room.flywheel.util.RenderMath;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;

@@ -1,6 +1,6 @@
 package top.leonx.irisflw.mixin.flw;
 
-import com.jozufozu.flywheel.backend.ShadersModHandler;
+import dev.engine_room.flywheel.backend.ShadersModHandler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

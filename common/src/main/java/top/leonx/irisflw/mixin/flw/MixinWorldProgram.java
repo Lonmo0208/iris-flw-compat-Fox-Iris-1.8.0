@@ -1,7 +1,7 @@
 package top.leonx.irisflw.mixin.flw;
 
-import com.jozufozu.flywheel.backend.gl.shader.GlProgram;
-import com.jozufozu.flywheel.core.shader.WorldProgram;
+import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
+import dev.engine_room.flywheel.core.shader.WorldProgram;
 import com.mojang.blaze3d.platform.GlStateManager;
 import net.irisshaders.iris.gl.blending.BlendModeStorage;
 import net.minecraft.resources.ResourceLocation;

@@ -1,7 +1,7 @@
 package top.leonx.irisflw.mixin.flw.vertex;
 
-import com.jozufozu.flywheel.core.hardcoded.PartBuilder;
-import com.jozufozu.flywheel.core.vertex.PosTexNormalWriterUnsafe;
+import dev.engine_room.flywheel.core.hardcoded.PartBuilder;
+import dev.engine_room.flywheel.core.vertex.PosTexNormalWriterUnsafe;
 import net.irisshaders.iris.vertices.NormalHelper;
 import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.Mixin;

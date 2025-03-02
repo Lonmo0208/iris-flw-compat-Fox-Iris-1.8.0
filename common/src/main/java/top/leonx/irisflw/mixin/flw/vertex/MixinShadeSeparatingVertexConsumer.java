@@ -1,6 +1,6 @@
 package top.leonx.irisflw.mixin.flw.vertex;
 
-import com.jozufozu.flywheel.core.model.ShadeSeparatingVertexConsumer;
+import dev.engine_room.flywheel.core.model.ShadeSeparatingVertexConsumer;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.irisshaders.iris.vertices.BlockSensitiveBufferBuilder;
 import org.spongepowered.asm.mixin.Mixin;

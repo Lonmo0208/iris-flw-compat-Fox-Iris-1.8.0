@@ -1,12 +1,12 @@
 package top.leonx.irisflw.transformer;
 
-import com.jozufozu.flywheel.api.vertex.VertexType;
-import com.jozufozu.flywheel.core.compile.*;
-import com.jozufozu.flywheel.core.shader.StateSnapshot;
-import com.jozufozu.flywheel.core.source.FileIndexImpl;
-import com.jozufozu.flywheel.core.source.FileResolution;
-import com.jozufozu.flywheel.core.source.SourceFile;
-import com.jozufozu.flywheel.core.source.parse.StructField;
+import dev.engine_room.flywheel.api.vertex.VertexType;
+import dev.engine_room.flywheel.core.compile.*;
+import dev.engine_room.flywheel.core.shader.StateSnapshot;
+import dev.engine_room.flywheel.core.source.FileIndexImpl;
+import dev.engine_room.flywheel.core.source.FileResolution;
+import dev.engine_room.flywheel.core.source.SourceFile;
+import dev.engine_room.flywheel.core.source.parse.StructField;
 
 public abstract class ShaderPatcherBase {
     protected final FileResolution header;

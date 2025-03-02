@@ -1,6 +1,6 @@
 package top.leonx.irisflw.mixin.flw.vertex;
 
-import com.jozufozu.flywheel.core.model.BlockModel;
+import dev.engine_room.flywheel.core.model.BlockModel;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;

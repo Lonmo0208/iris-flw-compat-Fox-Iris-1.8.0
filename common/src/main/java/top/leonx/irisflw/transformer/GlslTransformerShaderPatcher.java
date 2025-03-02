@@ -1,8 +1,8 @@
 package top.leonx.irisflw.transformer;
 
-import com.jozufozu.flywheel.core.compile.Template;
-import com.jozufozu.flywheel.core.compile.VertexData;
-import com.jozufozu.flywheel.core.source.FileResolution;
+import dev.engine_room.flywheel.core.compile.Template;
+import dev.engine_room.flywheel.core.compile.VertexData;
+import dev.engine_room.flywheel.core.source.FileResolution;
 import io.github.douira.glsl_transformer.GLSLParser;
 import io.github.douira.glsl_transformer.ast.data.ChildNodeList;
 import io.github.douira.glsl_transformer.ast.node.TranslationUnit;

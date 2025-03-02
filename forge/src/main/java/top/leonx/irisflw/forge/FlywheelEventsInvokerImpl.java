@@ -1,6 +1,6 @@
 package top.leonx.irisflw.forge;
 
-import com.jozufozu.flywheel.event.RenderLayerEvent;
+import dev.engine_room.flywheel.event.RenderLayerEvent;
 import net.minecraftforge.common.MinecraftForge;
 
 public class FlywheelEventsInvokerImpl {

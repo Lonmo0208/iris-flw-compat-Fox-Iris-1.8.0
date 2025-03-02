@@ -1,7 +1,7 @@
 package top.leonx.irisflw.vertex;
 
-import com.jozufozu.flywheel.api.vertex.ShadedVertexList;
-import com.jozufozu.flywheel.core.vertex.BlockVertexListUnsafe;
+import dev.engine_room.flywheel.api.vertex.ShadedVertexList;
+import dev.engine_room.flywheel.core.vertex.BlockVertexListUnsafe;
 
 import java.nio.ByteBuffer;
 

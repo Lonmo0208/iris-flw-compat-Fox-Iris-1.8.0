@@ -1,7 +1,7 @@
 package top.leonx.irisflw.forge.mixin;
 
-import com.jozufozu.flywheel.core.model.ShadeSeparatingVertexConsumer;
-import com.jozufozu.flywheel.core.model.WorldModelBuilder;
+import dev.engine_room.flywheel.core.model.ShadeSeparatingVertexConsumer;
+import dev.engine_room.flywheel.core.model.WorldModelBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;

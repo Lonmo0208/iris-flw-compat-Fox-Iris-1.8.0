@@ -1,9 +1,9 @@
 package top.leonx.irisflw.mixin.flw;
 
-import com.jozufozu.flywheel.core.compile.Template;
-import com.jozufozu.flywheel.core.compile.VertexCompiler;
-import com.jozufozu.flywheel.core.compile.VertexData;
-import com.jozufozu.flywheel.core.source.FileResolution;
+import dev.engine_room.flywheel.core.compile.Template;
+import dev.engine_room.flywheel.core.compile.VertexCompiler;
+import dev.engine_room.flywheel.core.compile.VertexData;
+import dev.engine_room.flywheel.core.source.FileResolution;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 

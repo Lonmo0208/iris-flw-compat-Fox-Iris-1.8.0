@@ -1,9 +1,9 @@
 package top.leonx.irisflw.vertex.block;
 
-import com.jozufozu.flywheel.api.vertex.VertexList;
-import com.jozufozu.flywheel.core.vertex.BlockVertex;
-import com.jozufozu.flywheel.core.vertex.BlockWriterUnsafe;
-import com.jozufozu.flywheel.util.RenderMath;
+import dev.engine_room.flywheel.api.vertex.VertexList;
+import dev.engine_room.flywheel.core.vertex.BlockVertex;
+import dev.engine_room.flywheel.core.vertex.BlockWriterUnsafe;
+import dev.engine_room.flywheel.util.RenderMath;
 import net.irisshaders.iris.vertices.NormI8;
 import org.lwjgl.system.MemoryUtil;
 import top.leonx.irisflw.vertex.IrisBlockVertexReader;
