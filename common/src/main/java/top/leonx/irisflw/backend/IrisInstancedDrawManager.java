@@ -68,29 +68,97 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
     public void render(LightStorage lightStorage, EnvironmentStorage environmentStorage) {
         super.render(lightStorage, environmentStorage);
 
-        this.instancers.values()
-                .removeIf(instancer -> {
-                    if (instancer.instanceCount() == 0) {
-                        instancer.delete();
-                        return true;
-                    } else {
-                        instancer.updateBuffer();
-                        return false;
-                    }
-                });
+        // Early exit if nothing to render
+        if (instancers.isEmpty() && allDraws.isEmpty()) {
+            return;
+        }
 
-        // Remove the draw calls for any instancers we deleted.
-        needSort |= allDraws.removeIf(InstancedDraw::deleted);
+        // Update and clean up instancers efficiently
+        boolean hasActiveInstances = updateAndCleanupInstancers();
+        
+        // Remove deleted draw calls and mark for sorting if needed
+        synchronized (this) {
+            needSort |= allDraws.removeIf(InstancedDraw::deleted);
 
-        if (needSort) {
+            // Only process sorting and preparation if we have active instances
+            if (hasActiveInstances && needSort) {
+                // Perform sorting and categorization
+                sortAndCategorizeDraws();
+            }
+
+            // Early exit if nothing to render after cleanup
+            if (allDraws.isEmpty()) {
+                return;
+            }
+        }
+
+        // Flush pending resources
+        meshPool.flush();
+        light.flush(lightStorage);
+
+        // Bind common resources once
+        Uniforms.bindAll();
+        vao.bindForDraw();
+        TextureBinder.bindLightAndOverlay();
+        light.bind();
+
+        // Render standard draws
+        submitDraws();
+
+        // Render OIT draws if any
+        if (!oitDraws.isEmpty()) {
+            renderOitDraws();
+            // Rebind VAO after OIT fullscreen passes
+            vao.bindForDraw();
+        }
+
+        // Reset states
+        MaterialRenderState.reset();
+        TextureBinder.resetLightAndOverlay();
+    }
+
+    /**
+     * Updates and cleans up instancers efficiently.
+     * @return True if there are active instances after cleanup
+     */
+    private boolean updateAndCleanupInstancers() {
+        boolean hasActiveInstances = false;
+        
+        // Process instancers in a single pass with thread-safety
+        synchronized (instancers) {
+            var iterator = instancers.values().iterator();
+            while (iterator.hasNext()) {
+                var instancer = iterator.next();
+                int instanceCount = instancer.instanceCount();
+                
+                if (instanceCount == 0) {
+                    instancer.delete();
+                    iterator.remove();
+                } else {
+                    // Only update buffer if there are instances
+                    instancer.updateBuffer();
+                    hasActiveInstances = true;
+                }
+            }
+        }
+        
+        return hasActiveInstances;
+    }
+
+    /**
+     * Sorts all draw calls and categorizes them into standard and OIT draws.
+     */
+    private void sortAndCategorizeDraws() {
+        synchronized (this) {
+            // Sort once with the comparator
             allDraws.sort(DRAW_COMPARATOR);
 
+            // Clear and categorize in a single pass
             draws.clear();
             oitDraws.clear();
 
             for (var draw : allDraws) {
-                if (draw.material()
-                        .transparency() == Transparency.ORDER_INDEPENDENT) {
+                if (draw.material().transparency() == Transparency.ORDER_INDEPENDENT) {
                     oitDraws.add(draw);
                 } else {
                     draws.add(draw);
@@ -99,151 +167,124 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
 
             needSort = false;
         }
+    }
 
-        meshPool.flush();
+    /**
+     * Renders all OIT draws using the OIT framebuffer pipeline.
+     */
+    private void renderOitDraws() {
+        oitFramebuffer.prepare();
 
-        light.flush(lightStorage);
+        // First pass: depth range
+        oitFramebuffer.depthRange();
+        submitOitDraws(PipelineCompiler.OitMode.DEPTH_RANGE);
 
-        if (allDraws.isEmpty()) {
-            return;
+        // Second pass: generate coefficients
+        oitFramebuffer.renderTransmittance();
+        submitOitDraws(PipelineCompiler.OitMode.GENERATE_COEFFICIENTS);
+
+        // Third pass: evaluate and composite
+        oitFramebuffer.renderDepthFromTransmittance();
+        oitFramebuffer.accumulate();
+        submitOitDraws(PipelineCompiler.OitMode.EVALUATE);
+        oitFramebuffer.composite();
+    }
+
+    /**
+     * Submits draw calls for rendering, optimizing shader and material state changes.
+     * @param drawCalls List of draw calls to render
+     * @param mode OIT mode to use for rendering
+     * @param isOit Whether this is for OIT rendering
+     */
+    private void submitDrawCalls(List<InstancedDraw> drawCalls, PipelineCompiler.OitMode mode, boolean isOit) {
+        var isShadow = RenderLayerEventStateManager.isRenderingShadow();
+        
+        // Create a local copy of the drawCalls list to ensure thread safety during rendering
+        List<InstancedDraw> localDrawCalls;
+        synchronized (this) {
+            if (drawCalls.isEmpty()) {
+                return;
+            }
+            localDrawCalls = new ArrayList<>(drawCalls);
+        }
+        
+        Object lastProgram = null;
+        Object lastEnvironment = null;
+        Material lastMaterial = null;
+        int lastProgramHashCode = 0;
+        int lastEnvironmentHashCode = 0;
+        int lastMaterialHashCode = 0;
+        
+        for (var drawCall : localDrawCalls) {
+            var material = drawCall.material();
+            var groupKey = drawCall.groupKey;
+            var environment = groupKey.environment();
+
+            // Get the shader program with caching
+            var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, mode, isShadow);
+            if (program == null) {
+                continue;
+            }
+            
+            // Use hash codes for faster comparisons
+            int programHashCode = System.identityHashCode(program);
+            int environmentHashCode = System.identityHashCode(environment);
+            int materialHashCode = System.identityHashCode(material);
+            
+            boolean programChanged = programHashCode != lastProgramHashCode;
+            boolean environmentChanged = environmentHashCode != lastEnvironmentHashCode;
+            boolean materialChanged = materialHashCode != lastMaterialHashCode;
+            
+            if (programChanged) {
+                program.bind();
+                lastProgram = program;
+                lastProgramHashCode = programHashCode;
+                // Force environment and material updates when program changes
+                environmentChanged = true;
+                materialChanged = true;
+            }
+            
+            if (environmentChanged) {
+                environment.setupDraw(program);
+                lastEnvironment = environment;
+                lastEnvironmentHashCode = environmentHashCode;
+            }
+            
+            if (materialChanged) {
+                uploadMaterialUniform(program, material);
+                if (isOit) {
+                    MaterialRenderState.setupOit(material);
+                } else {
+                    MaterialRenderState.setup(material);
+                }
+                lastMaterial = material;
+                lastMaterialHashCode = materialHashCode;
+            }
+
+            // Set vertex offset
+            program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
+
+            // Make instance buffer active only when program changes
+            if (programChanged) {
+                Samplers.INSTANCE_BUFFER.makeActive();
+            }
+
+            // Render the draw call
+            drawCall.render(instanceTexture);
         }
 
-        Uniforms.bindAll();
-        vao.bindForDraw();
-        TextureBinder.bindLightAndOverlay();
-        light.bind();
-
-        submitDraws();
-
-        if (!oitDraws.isEmpty()) {
-            oitFramebuffer.prepare();
-
-            oitFramebuffer.depthRange();
-
-            submitOitDraws(PipelineCompiler.OitMode.DEPTH_RANGE);
-
-            oitFramebuffer.renderTransmittance();
-
-            submitOitDraws(PipelineCompiler.OitMode.GENERATE_COEFFICIENTS);
-
-            oitFramebuffer.renderDepthFromTransmittance();
-
-            // Need to bind this again because we just drew a full screen quad for OIT.
-            vao.bindForDraw();
-
-            oitFramebuffer.accumulate();
-
-            submitOitDraws(PipelineCompiler.OitMode.EVALUATE);
-
-            oitFramebuffer.composite();
+        // Clear program state if needed
+        if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
+            ((IrisFlwCompatGlProgramBase) lastProgram).clear();
         }
-
-        MaterialRenderState.reset();
-        TextureBinder.resetLightAndOverlay();
     }
 
     private void submitDraws() {
-        var isShadow = RenderLayerEventStateManager.isRenderingShadow();
-        
-        Object lastProgram = null;
-        Object lastEnvironment = null;
-        Material lastMaterial = null;
-        boolean oitMode = false;
-        
-        for (var drawCall : draws) {
-            var material = drawCall.material();
-            var groupKey = drawCall.groupKey;
-            var environment = groupKey.environment();
-
-            var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, PipelineCompiler.OitMode.OFF, isShadow);
-            if(program == null) {
-                continue;
-            }
-            boolean programChanged = program != lastProgram;
-            boolean environmentChanged = environment != lastEnvironment;
-            boolean materialChanged = material != lastMaterial;
-            
-            if (programChanged) {
-                program.bind();
-                lastProgram = program;
-                // 重置环境和材质状态，确保在新程序中正确设置
-                environmentChanged = true;
-                materialChanged = true;
-            }
-            
-            if (environmentChanged) {
-                environment.setupDraw(program);
-                lastEnvironment = environment;
-            }
-            
-            if (materialChanged) {
-                uploadMaterialUniform(program, material);
-                MaterialRenderState.setup(material);
-                lastMaterial = material;
-            }
-
-            program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
-
-            if (programChanged) {
-                Samplers.INSTANCE_BUFFER.makeActive();
-            }
-
-            drawCall.render(instanceTexture);
-        }
-
-        if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
-            ((IrisFlwCompatGlProgramBase) lastProgram).clear();
-        }
+        submitDrawCalls(draws, PipelineCompiler.OitMode.OFF, false);
     }
 
     private void submitOitDraws(PipelineCompiler.OitMode mode) {
-        var isShadow = RenderLayerEventStateManager.isRenderingShadow();
-        
-        Object lastProgram = null;
-        Object lastEnvironment = null;
-        Material lastMaterial = null;
-        
-        for (var drawCall : oitDraws) {
-            var material = drawCall.material();
-            var groupKey = drawCall.groupKey;
-            var environment = groupKey.environment();
-
-            var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, mode, isShadow);
-            
-            boolean programChanged = program != lastProgram;
-            boolean environmentChanged = environment != lastEnvironment;
-            boolean materialChanged = material != lastMaterial;
-            
-            if (programChanged) {
-                program.bind();
-                lastProgram = program;
-                environmentChanged = true;
-                materialChanged = true;
-            }
-            
-            if (environmentChanged) {
-                environment.setupDraw(program);
-                lastEnvironment = environment;
-            }
-            
-            if (materialChanged) {
-                uploadMaterialUniform(program, material);
-                MaterialRenderState.setupOit(material);
-                lastMaterial = material;
-            }
-
-            program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
-
-            if (programChanged) {
-                Samplers.INSTANCE_BUFFER.makeActive();
-            }
-
-            drawCall.render(instanceTexture);
-        }
-
-        if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
-            ((IrisFlwCompatGlProgramBase) lastProgram).clear();
-        }
+        submitDrawCalls(oitDraws, mode, true);
     }
 
     @Override
@@ -279,16 +320,18 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
 
         var meshes = key.model()
                 .meshes();
-        for (int i = 0; i < meshes.size(); i++) {
-            var entry = meshes.get(i);
-            var mesh = meshPool.alloc(entry.mesh());
+        synchronized (this) {
+            for (int i = 0; i < meshes.size(); i++) {
+                var entry = meshes.get(i);
+                var mesh = meshPool.alloc(entry.mesh());
 
-            GroupKey<?> groupKey = new GroupKey<>(key.type(), key.environment());
-            InstancedDraw instancedDraw = new InstancedDraw(instancer, mesh, groupKey, entry.material(), key.bias(), i);
+                GroupKey<?> groupKey = new GroupKey<>(key.type(), key.environment());
+                InstancedDraw instancedDraw = new InstancedDraw(instancer, mesh, groupKey, entry.material(), key.bias(), i);
 
-            allDraws.add(instancedDraw);
-            needSort = true;
-            instancer.addDrawCall(instancedDraw);
+                allDraws.add(instancedDraw);
+                needSort = true;
+                instancer.addDrawCall(instancedDraw);
+            }
         }
     }
 
