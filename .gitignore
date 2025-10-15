@@ -1,0 +1,11 @@
+/外部库
+/.gradle
+/common/build
+/fabric/build
+/.idea
+/neoforge/build
+/neoforge/run
+/neoforge/.gradle
+/fabric/.gradle
+/build
+/common/.gradle

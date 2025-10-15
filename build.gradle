@@ -30,6 +30,9 @@ subprojects {
     }
 
     repositories {
+        flatDir(
+                dirs: 'libs'
+        )
         maven { url = "https://maven.parchmentmc.org" }
         maven {
             name "tterrag maven"
