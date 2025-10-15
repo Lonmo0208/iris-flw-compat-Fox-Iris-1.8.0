@@ -14,6 +14,10 @@ import top.leonx.irisflw.flywheel.IrisFlwCompatGlProgramBase;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -22,13 +26,20 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
     private static final Logger LOGGER = Logger.getLogger(IrisInstancingPrograms.class.getName());
     private static final List<String> EXTENSIONS = getExtensions(GlCompat.MAX_GLSL_VERSION);
     private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
+    private static final ExecutorService PRELOAD_SERVICE = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "Iris-Programs-Preloader");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static volatile ShaderSources lastSources = null;
     private static volatile List<SourceComponent> lastVertexComponents = null;
     private static volatile List<SourceComponent> lastFragmentComponents = null;
+    private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
 
     @Nullable
     private static volatile IrisInstancingPrograms instance;
+    private static final CopyOnWriteArrayList<Runnable> INITIALIZATION_CALLBACKS = new CopyOnWriteArrayList<>();
 
     private final IrisPipelineCompiler pipeline;
     private final OitPrograms oitPrograms;
@@ -51,30 +62,29 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
             return;
         }
 
+        boolean initialCheckPass;
         LOCK.readLock().lock();
         try {
-            boolean sourcesChanged = !Objects.equals(sources, lastSources);
-            boolean componentsChanged = false;
-            
-            if (!sourcesChanged) {
-                componentsChanged = !Objects.equals(vertexComponents, lastVertexComponents) || 
-                                  !Objects.equals(fragmentComponents, lastFragmentComponents);
-            }
-            
-            if (!sourcesChanged && !componentsChanged && instance != null) {
-                return;
-            }
+            initialCheckPass = instance == null || 
+                              !Objects.equals(sources, lastSources) || 
+                              !Objects.equals(vertexComponents, lastVertexComponents) || 
+                              !Objects.equals(fragmentComponents, lastFragmentComponents);
         } finally {
             LOCK.readLock().unlock();
         }
 
+        if (!initialCheckPass) {
+            return;
+        }
+
         LOCK.writeLock().lock();
         try {
-            boolean sourcesChanged = !Objects.equals(sources, lastSources);
-            boolean componentsChanged = !Objects.equals(vertexComponents, lastVertexComponents) || 
-                                      !Objects.equals(fragmentComponents, lastFragmentComponents);
+            boolean reloadNeeded = instance == null || 
+                                  !Objects.equals(sources, lastSources) || 
+                                  !Objects.equals(vertexComponents, lastVertexComponents) || 
+                                  !Objects.equals(fragmentComponents, lastFragmentComponents);
             
-            if (!sourcesChanged && !componentsChanged && instance != null) {
+            if (!reloadNeeded) {
                 return;
             }
 
@@ -106,8 +116,32 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
                 newInstance.acquire();
             }
             instance = newInstance;
+            if (newInstance != null && !INITIALIZED.getAndSet(true)) {
+                PRELOAD_SERVICE.submit(() -> {
+                    for (Runnable callback : INITIALIZATION_CALLBACKS) {
+                        try {
+                            callback.run();
+                        } catch (Exception e) {
+                            LOGGER.log(Level.WARNING, "Error executing initialization callback", e);
+                        }
+                    }
+                    INITIALIZATION_CALLBACKS.clear();
+                });
+            }
         } finally {
             LOCK.writeLock().unlock();
+        }
+    }
+
+    public static void registerInitializationCallback(Runnable callback) {
+        if (INITIALIZED.get()) {
+            try {
+                callback.run();
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error executing initialization callback", e);
+            }
+        } else {
+            INITIALIZATION_CALLBACKS.add(callback);
         }
     }
 
@@ -122,12 +156,25 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
     }
 
     public static boolean allLoaded() {
-        LOCK.readLock().lock();
-        try {
-            return instance != null;
-        } finally {
-            LOCK.readLock().unlock();
-        }
+        return instance != null;
+    }
+
+    public static void preloadCommonPrograms() {
+        PRELOAD_SERVICE.submit(() -> {
+            if (!allLoaded()) {
+                LOGGER.fine("Cannot preload programs - not initialized yet");
+                return;
+            }
+            
+            IrisInstancingPrograms currentInstance = get();
+            if (currentInstance == null) return;
+            
+            try {
+                LOGGER.fine("Preloading of common programs completed");
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error during program preloading", e);
+            }
+        });
     }
 
     public static void kill() {
@@ -136,6 +183,8 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
             lastSources = null;
             lastVertexComponents = null;
             lastFragmentComponents = null;
+            INITIALIZED.set(false);
+            INITIALIZATION_CALLBACKS.clear();
             setInstance(null);
         } finally {
             LOCK.writeLock().unlock();
@@ -157,7 +206,20 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
 
     @Override
     protected void _delete() {
-        pipeline.delete();
-        oitPrograms.delete();
+        try {
+            if (pipeline != null) {
+                pipeline.delete();
+            }
+            if (oitPrograms != null) {
+                oitPrograms.delete();
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error during resource cleanup", e);
+        }
+    }
+
+    public static void shutdown() {
+        kill();
+        PRELOAD_SERVICE.shutdown();
     }
 }

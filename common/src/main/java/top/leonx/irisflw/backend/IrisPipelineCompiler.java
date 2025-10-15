@@ -5,7 +5,6 @@ import dev.engine_room.flywheel.api.material.LightShader;
 import dev.engine_room.flywheel.api.material.Material;
 import dev.engine_room.flywheel.api.material.MaterialShaders;
 import dev.engine_room.flywheel.backend.BackendConfig;
-import dev.engine_room.flywheel.backend.InternalVertex;
 import dev.engine_room.flywheel.backend.MaterialShaderIndices;
 import dev.engine_room.flywheel.backend.Samplers;
 import dev.engine_room.flywheel.backend.compile.ContextShader;
@@ -29,9 +28,21 @@ import top.leonx.irisflw.IrisFlw;
 import top.leonx.irisflw.mixin.flw.PipelineCompilerAccessor;
 
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class IrisPipelineCompiler {
+    private static final Logger LOGGER = Logger.getLogger(IrisPipelineCompiler.class.getName());
     private static final Set<IrisPipelineCompiler> ALL = Collections.newSetFromMap(new WeakHashMap<>());
+
+    private static final ExecutorService ASYNC_COMPILER = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "Iris-FLW-Shader-Compiler");
+        thread.setPriority(Thread.NORM_PRIORITY);
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private static final Compile<PipelineProgramKey> PIPELINE = new Compile<>();
 
@@ -39,6 +50,8 @@ public class IrisPipelineCompiler {
     private static final ResourceLocation API_IMPL_FRAG = ResourceUtil.rl("internal/api_impl.frag");
 
     private final CompilationHarness<PipelineProgramKey> harness;
+    private final Map<PipelineProgramKey, CompletableFuture<GlProgram>> pendingCompilations = new ConcurrentHashMap<>();
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public IrisPipelineCompiler(CompilationHarness<PipelineProgramKey> harness) {
         this.harness = harness;
@@ -61,10 +74,95 @@ public class IrisPipelineCompiler {
         MaterialShaderIndices.cutoutSources()
                 .index(cutout.source());
 
-        return harness.get(new PipelineProgramKey(instanceType, contextShader, light, shaders, cutout != CutoutShaders.OFF, FrameUniforms.debugOn(), oit, isShadow));
+        PipelineProgramKey key = new PipelineProgramKey(instanceType, contextShader, light, shaders, cutout != CutoutShaders.OFF, FrameUniforms.debugOn(), oit, isShadow);
+
+        lock.readLock().lock();
+        try {
+            GlProgram existingProgram = harness.get(key);
+            if (existingProgram != null) {
+                return existingProgram;
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        CompletableFuture<GlProgram> compilationFuture = pendingCompilations.get(key);
+        if (compilationFuture != null) {
+            try {
+                return compilationFuture.get(100, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                LOGGER.log(Level.FINE, "Shader compilation timed out or failed, falling back to synchronous compilation", e);
+                pendingCompilations.remove(key, compilationFuture);
+            }
+        }
+
+        return compileProgram(key);
+    }
+
+    private GlProgram compileProgram(PipelineProgramKey key) {
+        lock.readLock().lock();
+        try {
+            GlProgram program = harness.get(key);
+            if (program != null) {
+                return program;
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+
+        CompletableFuture<GlProgram> newFuture = new CompletableFuture<>();
+        CompletableFuture<GlProgram> existingFuture = pendingCompilations.putIfAbsent(key, newFuture);
+        
+        if (existingFuture != null) {
+            try {
+                return existingFuture.get(100, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                LOGGER.log(Level.FINE, "Shader compilation timed out, proceeding with synchronous compilation", e);
+            }
+        }
+        
+        try {
+            GlProgram program = syncCompileProgram(key);
+            newFuture.complete(program);
+            pendingCompilations.remove(key);
+            return program;
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Failed to compile shader synchronously, falling back to async", e);
+            ASYNC_COMPILER.submit(() -> {
+                try {
+                    GlProgram program = syncCompileProgram(key);
+                    newFuture.complete(program);
+                } catch (Exception ex) {
+                    LOGGER.log(Level.SEVERE, "Failed to compile shader program asynchronously", ex);
+                    newFuture.completeExceptionally(ex);
+                } finally {
+                    pendingCompilations.remove(key);
+                }
+            });
+
+            return null;
+        }
+    }
+
+    private GlProgram syncCompileProgram(PipelineProgramKey key) {
+        lock.writeLock().lock();
+        try {
+            GlProgram existingProgram = harness.get(key);
+            if (existingProgram != null) {
+                return existingProgram;
+            }
+
+            return harness.get(key);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     public void delete() {
+        for (CompletableFuture<GlProgram> future : pendingCompilations.values()) {
+            future.cancel(true);
+        }
+        pendingCompilations.clear();
         harness.delete();
     }
 

@@ -26,18 +26,25 @@ import top.leonx.irisflw.flywheel.RenderLayerEventStateManager;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
-    private static final Comparator<InstancedDraw> DRAW_COMPARATOR = Comparator.comparing(InstancedDraw::bias)
-            .thenComparing(InstancedDraw::indexOfMeshInModel)
-            .thenComparing(InstancedDraw::material, MaterialRenderState.COMPARATOR);
+    private static final Comparator<InstancedDraw> DRAW_COMPARATOR = Comparator.comparing((InstancedDraw draw) -> {
+        return draw.material().hashCode();
+    }).thenComparing((InstancedDraw draw) -> {
+        return System.identityHashCode(draw.groupKey.environment());
+    }).thenComparing(InstancedDraw::bias)
+      .thenComparing(InstancedDraw::indexOfMeshInModel);
 
     private final List<InstancedDraw> allDraws = new ArrayList<>();
     private boolean needSort = false;
 
     private final List<InstancedDraw> draws = new ArrayList<>();
     private final List<InstancedDraw> oitDraws = new ArrayList<>();
+
+    private final Map<Material, Integer[]> materialUniformCache = new HashMap<>();
 
     private final IrisInstancingPrograms programs;
     /**
@@ -198,48 +205,32 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
      */
     private void submitDrawCalls(List<InstancedDraw> drawCalls, PipelineCompiler.OitMode mode, boolean isOit) {
         var isShadow = RenderLayerEventStateManager.isRenderingShadow();
-        
-        // Create a local copy of the drawCalls list to ensure thread safety during rendering
-        List<InstancedDraw> localDrawCalls;
-        synchronized (this) {
-            if (drawCalls.isEmpty()) {
-                return;
-            }
-            localDrawCalls = new ArrayList<>(drawCalls);
+
+        if (drawCalls.isEmpty()) {
+            return;
         }
-        
-        Object lastProgram = null;
+
+        GlProgram lastProgram = null;
         Object lastEnvironment = null;
         Material lastMaterial = null;
-        int lastProgramHashCode = 0;
-        int lastEnvironmentHashCode = 0;
-        int lastMaterialHashCode = 0;
         
-        for (var drawCall : localDrawCalls) {
+        for (var drawCall : drawCalls) {
             var material = drawCall.material();
             var groupKey = drawCall.groupKey;
             var environment = groupKey.environment();
 
-            // Get the shader program with caching
             var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, mode, isShadow);
             if (program == null) {
                 continue;
             }
-            
-            // Use hash codes for faster comparisons
-            int programHashCode = System.identityHashCode(program);
-            int environmentHashCode = System.identityHashCode(environment);
-            int materialHashCode = System.identityHashCode(material);
-            
-            boolean programChanged = programHashCode != lastProgramHashCode;
-            boolean environmentChanged = environmentHashCode != lastEnvironmentHashCode;
-            boolean materialChanged = materialHashCode != lastMaterialHashCode;
+
+            boolean programChanged = program != lastProgram;
+            boolean environmentChanged = environment != lastEnvironment;
+            boolean materialChanged = material != lastMaterial;
             
             if (programChanged) {
                 program.bind();
                 lastProgram = program;
-                lastProgramHashCode = programHashCode;
-                // Force environment and material updates when program changes
                 environmentChanged = true;
                 materialChanged = true;
             }
@@ -247,36 +238,42 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
             if (environmentChanged) {
                 environment.setupDraw(program);
                 lastEnvironment = environment;
-                lastEnvironmentHashCode = environmentHashCode;
             }
             
             if (materialChanged) {
-                uploadMaterialUniform(program, material);
+                uploadMaterialUniformWithCache(program, material);
                 if (isOit) {
                     MaterialRenderState.setupOit(material);
                 } else {
                     MaterialRenderState.setup(material);
                 }
                 lastMaterial = material;
-                lastMaterialHashCode = materialHashCode;
             }
 
-            // Set vertex offset
             program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
 
-            // Make instance buffer active only when program changes
             if (programChanged) {
                 Samplers.INSTANCE_BUFFER.makeActive();
             }
 
-            // Render the draw call
             drawCall.render(instanceTexture);
         }
 
-        // Clear program state if needed
         if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
             ((IrisFlwCompatGlProgramBase) lastProgram).clear();
         }
+    }
+
+    private void uploadMaterialUniformWithCache(GlProgram program, Material material) {
+        Integer[] cachedValues = materialUniformCache.get(material);
+        if (cachedValues == null) {
+            int packedFogAndCutout = MaterialEncoder.packUberShader(material);
+            int packedMaterialProperties = MaterialEncoder.packProperties(material);
+            cachedValues = new Integer[]{packedFogAndCutout, packedMaterialProperties};
+            materialUniformCache.put(material, cachedValues);
+        }
+
+        program.setUVec2("_flw_packedMaterial", cachedValues[0], cachedValues[1]);
     }
 
     private void submitDraws() {
@@ -297,13 +294,13 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
         draws.clear();
         oitDraws.clear();
 
+        materialUniformCache.clear();
+
         meshPool.delete();
         instanceTexture.delete();
         programs.release();
         vao.delete();
-
         light.delete();
-
         oitFramebuffer.delete();
 
         super.delete();
