@@ -69,7 +69,7 @@ dependencies {
     modLocalRuntime ("net.createmod.ponder:Ponder-NeoForge-${minecraft_version}:${ponder_version}")
     modLocalRuntime ("dev.engine-room.flywheel:flywheel-neoforge-${flywheel_minecraft_version}:${flywheel_neoforge_version}")
     modLocalRuntime ("com.tterrag.registrate:Registrate:${registrate_version}")
-    modLocalRuntime ("dev.engine-room.vanillin:vanillin-neoforge-${flywheel_minecraft_version}:${vanillin_neoforge_version}")
+    //modLocalRuntime ("dev.engine-room.vanillin:vanillin-neoforge-${flywheel_minecraft_version}:${vanillin_neoforge_version}")
 }
 
 processResources {

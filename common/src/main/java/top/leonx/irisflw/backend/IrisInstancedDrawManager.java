@@ -21,6 +21,7 @@ import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
 import dev.engine_room.flywheel.lib.material.SimpleMaterial;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.ModelBakery;
+import top.leonx.irisflw.flywheel.IrisFlwCompatGlProgramBase;
 import top.leonx.irisflw.flywheel.RenderLayerEventStateManager;
 
 import java.util.ArrayList;
@@ -143,6 +144,12 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
 
     private void submitDraws() {
         var isShadow = RenderLayerEventStateManager.isRenderingShadow();
+        
+        Object lastProgram = null;
+        Object lastEnvironment = null;
+        Material lastMaterial = null;
+        boolean oitMode = false;
+        
         for (var drawCall : draws) {
             var material = drawCall.material();
             var groupKey = drawCall.groupKey;
@@ -152,47 +159,90 @@ public class IrisInstancedDrawManager extends DrawManager<InstancedInstancer<?>>
             if(program == null) {
                 continue;
             }
-            program.bind();
+            boolean programChanged = program != lastProgram;
+            boolean environmentChanged = environment != lastEnvironment;
+            boolean materialChanged = material != lastMaterial;
+            
+            if (programChanged) {
+                program.bind();
+                lastProgram = program;
+                // 重置环境和材质状态，确保在新程序中正确设置
+                environmentChanged = true;
+                materialChanged = true;
+            }
+            
+            if (environmentChanged) {
+                environment.setupDraw(program);
+                lastEnvironment = environment;
+            }
+            
+            if (materialChanged) {
+                uploadMaterialUniform(program, material);
+                MaterialRenderState.setup(material);
+                lastMaterial = material;
+            }
 
-            environment.setupDraw(program);
+            program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
 
-            uploadMaterialUniform(program, material);
-
-            program.setUInt("_flw_vertexOffset", drawCall.mesh()
-                    .baseVertex());
-
-            MaterialRenderState.setup(material);
-
-            Samplers.INSTANCE_BUFFER.makeActive();
+            if (programChanged) {
+                Samplers.INSTANCE_BUFFER.makeActive();
+            }
 
             drawCall.render(instanceTexture);
-            program.clear();
+        }
+
+        if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
+            ((IrisFlwCompatGlProgramBase) lastProgram).clear();
         }
     }
 
     private void submitOitDraws(PipelineCompiler.OitMode mode) {
         var isShadow = RenderLayerEventStateManager.isRenderingShadow();
+        
+        Object lastProgram = null;
+        Object lastEnvironment = null;
+        Material lastMaterial = null;
+        
         for (var drawCall : oitDraws) {
             var material = drawCall.material();
             var groupKey = drawCall.groupKey;
             var environment = groupKey.environment();
 
             var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, mode, isShadow);
-            program.bind();
+            
+            boolean programChanged = program != lastProgram;
+            boolean environmentChanged = environment != lastEnvironment;
+            boolean materialChanged = material != lastMaterial;
+            
+            if (programChanged) {
+                program.bind();
+                lastProgram = program;
+                environmentChanged = true;
+                materialChanged = true;
+            }
+            
+            if (environmentChanged) {
+                environment.setupDraw(program);
+                lastEnvironment = environment;
+            }
+            
+            if (materialChanged) {
+                uploadMaterialUniform(program, material);
+                MaterialRenderState.setupOit(material);
+                lastMaterial = material;
+            }
 
-            environment.setupDraw(program);
+            program.setUInt("_flw_vertexOffset", drawCall.mesh().baseVertex());
 
-            uploadMaterialUniform(program, material);
-
-            program.setUInt("_flw_vertexOffset", drawCall.mesh()
-                    .baseVertex());
-
-            MaterialRenderState.setupOit(material);
-
-            Samplers.INSTANCE_BUFFER.makeActive();
+            if (programChanged) {
+                Samplers.INSTANCE_BUFFER.makeActive();
+            }
 
             drawCall.render(instanceTexture);
-            program.clear();
+        }
+
+        if (lastProgram instanceof IrisFlwCompatGlProgramBase) {
+            ((IrisFlwCompatGlProgramBase) lastProgram).clear();
         }
     }
 

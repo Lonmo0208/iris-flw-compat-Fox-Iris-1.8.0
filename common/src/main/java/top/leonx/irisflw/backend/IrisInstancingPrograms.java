@@ -13,15 +13,19 @@ import org.jetbrains.annotations.Nullable;
 import top.leonx.irisflw.flywheel.IrisFlwCompatGlProgramBase;
 
 import java.util.List;
+import java.util.Objects;
 
 public class IrisInstancingPrograms extends AtomicReferenceCounted {
     private static final List<String> EXTENSIONS = getExtensions(GlCompat.MAX_GLSL_VERSION);
+
+    private static ShaderSources lastSources = null;
+    private static List<SourceComponent> lastVertexComponents = null;
+    private static List<SourceComponent> lastFragmentComponents = null;
 
     @Nullable
     private static IrisInstancingPrograms instance;
 
     private final IrisPipelineCompiler pipeline;
-
     private final OitPrograms oitPrograms;
 
     private IrisInstancingPrograms(IrisPipelineCompiler pipeline, OitPrograms oitPrograms) {
@@ -41,6 +45,19 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
         if (!GlCompat.SUPPORTS_INSTANCING) {
             return;
         }
+
+        boolean sourcesChanged = !Objects.equals(sources, lastSources);
+        boolean componentsChanged = !Objects.equals(vertexComponents, lastVertexComponents) || 
+                                   !Objects.equals(fragmentComponents, lastFragmentComponents);
+        
+        if (!sourcesChanged && !componentsChanged && instance != null) {
+            return;
+        }
+
+        lastSources = sources;
+        lastVertexComponents = vertexComponents;
+        lastFragmentComponents = fragmentComponents;
+        
 //      var createMethod = PipelineCompiler.class.getDeclaredMethod("create", ShaderSources.class, Pipeline.class, List.class, List.class, Collection.class);
         // ignore package private
 //      createMethod.setAccessible(true);
@@ -70,6 +87,9 @@ public class IrisInstancingPrograms extends AtomicReferenceCounted {
     }
 
     public static void kill() {
+        lastSources = null;
+        lastVertexComponents = null;
+        lastFragmentComponents = null;
         setInstance(null);
     }
 

@@ -19,6 +19,12 @@ public class IrisFlwCompatGlProgram extends IrisFlwCompatGlProgramBase {
     protected GlUniformMcMatrix3f uniformNormalMatrix;
     protected GlUniformMcMatrix4f uniformModelViewProjMat;
 
+    private final Matrix4f cachedNormalMatrix = new Matrix4f();
+    private final Matrix3f cachedNormalMatrix3f = new Matrix3f();
+    
+    private Matrix4f lastModelViewMatrix = null;
+    private Matrix4f lastProjectionMatrix = null;
+
     public IrisFlwCompatGlProgram(ShaderInstance shader, ShaderType type, String name) {
         super(shader.getId());
         this.shader = shader;
@@ -57,17 +63,24 @@ public class IrisFlwCompatGlProgram extends IrisFlwCompatGlProgramBase {
     }
 
     public void setProjectionMatrix(Matrix4f projectionMatrix) {
+        if (lastProjectionMatrix != projectionMatrix) {
         uniformIrisProjMat.set(projectionMatrix);
+            lastProjectionMatrix = projectionMatrix;
+        }
     }
 
     public void setModelViewMatrix(Matrix4f modelView) {
+        if (lastModelViewMatrix != modelView) {
         iris_uniformModelViewMat.set(modelView);
+            lastModelViewMatrix = modelView;
 
         if (this.uniformNormalMatrix != null) {
-            Matrix4f normalMatrix = new Matrix4f(modelView);
-            normalMatrix.invert();
-            normalMatrix.transpose();
-            this.uniformNormalMatrix.set(new Matrix3f(normalMatrix));
+            cachedNormalMatrix.set(modelView);
+            cachedNormalMatrix.invert();
+            cachedNormalMatrix.transpose();
+            cachedNormalMatrix3f.set(cachedNormalMatrix);
+            this.uniformNormalMatrix.set(cachedNormalMatrix3f);
+            }
         }
     }
 }
